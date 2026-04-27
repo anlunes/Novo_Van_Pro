@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "🧠 Brain Chat",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "orchestrator.py",
+        "--mode", "chat",
+        "--agent", "brain",
+        "--message", "${input:Mensagem pro Cérebro}"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "Mensagem pro Cérebro",
+      "description": "Digite sua mensagem para o Cérebro:",
+      "type": "promptString"
+    }
+  ]
+}

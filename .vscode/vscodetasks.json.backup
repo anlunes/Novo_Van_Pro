@@ -1,0 +1,128 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "🩺 Healthcheck",
+      "type": "process",
+      "command": "python",
+      "args": ["orchestrator.py", "--mode", "healthcheck"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "🧠 Cérebro: Iniciar Sessão",
+      "type": "process",
+      "command": "python",
+      "args": ["orchestrator.py", "--mode", "session-start"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "📋 Cérebro: Status",
+      "type": "process",
+      "command": "python",
+      "args": ["orchestrator.py", "--mode", "status"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "🏗️ Arquiteto: Proposta",
+      "type": "process",
+      "command": "python",
+      "args": [
+        "orchestrator.py",
+        "--mode", "chat",
+        "--agent", "architect",
+        "--message", "Analise o estado atual e proponha a próxima evolução arquitetural do VanPro."
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "💻 Coder: Implementar Feature",
+      "type": "process",
+      "command": "python",
+      "args": [
+        "orchestrator.py",
+        "--mode", "chat",
+        "--agent", "coder",
+        "--message", "Implemente a feature aprovada conforme o plano do Arquiteto."
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "🔍 Revisor: Revisão do Sistema",
+      "type": "process",
+      "command": "python",
+      "args": [
+        "orchestrator.py",
+        "--mode", "chat",
+        "--agent", "reviewer",
+        "--message", "Revise criticamente o estado atual do sistema e aponte riscos ou lacunas."
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "🧪 Tester: Validar Implementação",
+      "type": "process",
+      "command": "python",
+      "args": [
+        "orchestrator.py",
+        "--mode", "chat",
+        "--agent", "tester",
+        "--message", "Valide a última implementação e reporte os resultados dos testes."
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "🔐 Security: Análise de Segurança",
+      "type": "process",
+      "command": "python",
+      "args": [
+        "orchestrator.py",
+        "--mode", "chat",
+        "--agent", "security",
+        "--message", "Analise a última implementação quanto a riscos de segurança."
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "🔬 Researcher: Pesquisa Técnica",
+      "type": "process",
+      "command": "python",
+      "args": [
+        "orchestrator.py",
+        "--mode", "chat",
+        "--agent", "researcher",
+        "--message", "Pesquise a melhor abordagem técnica para a próxima feature do VanPro."
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "🗂️ Memory Keeper: Atualizar Memória",
+      "type": "process",
+      "command": "python",
+      "args": [
+        "orchestrator.py",
+        "--mode", "chat",
+        "--agent", "memory_keeper",
+        "--message", "Estruture o bloco de atualização do MEMORY.md com o que foi feito nesta sessão."
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "🗃️ Encerrar Sessão",
+      "type": "process",
+      "command": "python",
+      "args": ["orchestrator.py", "--mode", "end-session", "--summary", "Sessão encerrada pelo Mentor."],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    }
+  ]
+}
