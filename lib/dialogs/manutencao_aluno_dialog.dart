@@ -8,7 +8,7 @@ import 'package:http/http.dart' as http;
 // flutter_image_compress removido — não suporta web.
 
 // ── Constantes da API ─────────────────────────────────────────
-const String _kApiBase = 'https://novo.balcao2ponto0.com.br';
+const String _kApiBase = 'https://novo.balcao2ponto0.com.br/api_alunos.php';
 const String _kApiKey  = 'VanPro@2026#Secure'; // mesma do api_alunos.py
 
 class ManutencaoAlunoDialog extends StatefulWidget {
