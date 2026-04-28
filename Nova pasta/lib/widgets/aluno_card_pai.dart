@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+Ôªøimport 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/aluno_model.dart';
 
@@ -39,7 +39,7 @@ class _AlunoCardPaiState extends State<AlunoCardPai> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('SolicitaÁ„o enviada ao motorista !'),
+            content: Text('Solicita√ß√£o enviada ao motorista !'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -47,7 +47,7 @@ class _AlunoCardPaiState extends State<AlunoCardPai> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao enviar solicitaÁ„o: $e')),
+          SnackBar(content: Text('Erro ao enviar solicita√ß√£o: $e')),
         );
       }
     }
@@ -71,11 +71,11 @@ class _AlunoCardPaiState extends State<AlunoCardPai> {
           mainAxisSize: MainAxisSize.min,
           children: [
             _itemProntuario(Icons.location_city, "Escola", widget.aluno.nomeEscola),
-            _itemProntuario(Icons.access_time, "Hor·rio Entrada", widget.aluno.horarioEntrada),
-            _itemProntuario(Icons.exit_to_app, "Hor·rio SaÌ≠da", widget.aluno.horarioSaida),
+            _itemProntuario(Icons.access_time, "Hor√°rio Entrada", widget.aluno.horarioEntrada),
+            _itemProntuario(Icons.exit_to_app, "Hor√°rio Sa√≠¬≠da", widget.aluno.horarioSaida),
             const Divider(height: 20),
-            _itemProntuario(Icons.person, "Motorista", widget.motorista?['nome'] ?? "N„o informado"),
-            _itemProntuario(Icons.phone, "Telefone Van", widget.motorista?['telefone'] ?? "N„o informado"),
+            _itemProntuario(Icons.person, "Motorista", widget.motorista?['nome'] ?? "N√£o informado"),
+            _itemProntuario(Icons.phone, "Telefone Van", widget.motorista?['telefone'] ?? "N√£o informado"),
           ],
         ),
         actions: [
@@ -101,11 +101,11 @@ class _AlunoCardPaiState extends State<AlunoCardPai> {
   Widget _buildTopBanner() {
     // Apenas banners com campos que existem no Aluno (vaiHoje/cienteMotorista/status/pago)
     if (!widget.aluno.vaiHoje && widget.aluno.cienteMotorista) {
-      return _bannerStatus("Motorista ciente que n„o vai hoje", Colors.green);
+      return _bannerStatus("Motorista ciente que n√£o vai hoje", Colors.green);
     }
 
     if (widget.aluno.pago) {
-      return _bannerStatus("Pago ?", Colors.green.shade600);
+      return _bannerStatus("Pago ‚úÖ", Colors.green.shade600);
     }
 
     return const SizedBox.shrink();
@@ -187,7 +187,6 @@ class _AlunoCardPaiState extends State<AlunoCardPai> {
         children: [
           _buildTopBanner(),
           ExpansionTile(
-            controlAffinity: ListTileControlAffinity.leading,
             leading: GestureDetector(
               onTap: () => _abrirProntuarioFamilia(context),
               child: CircleAvatar(
@@ -204,7 +203,7 @@ class _AlunoCardPaiState extends State<AlunoCardPai> {
                         context: context,
                         builder: (_) => AlertDialog(
                           title: const Text('Detalhes do Motorista'),
-                          content: Text(widget.motorista?['nome'] ?? 'Motorista n„o localizado'),
+                          content: Text(widget.motorista?['nome'] ?? 'Motorista n√£o localizado'),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.of(context).pop(),
@@ -215,7 +214,7 @@ class _AlunoCardPaiState extends State<AlunoCardPai> {
                       )
                   : null,
               child: Text(
-                widget.motorista?['nome'] ?? "Motorista n„o localizado",
+                widget.motorista?['nome'] ?? "Motorista n√£o localizado",
                 style: TextStyle(
                   color: Colors.blue.shade700,
                   fontSize: 13,
@@ -223,11 +222,7 @@ class _AlunoCardPaiState extends State<AlunoCardPai> {
                 ),
               ),
             ),
-            trailing: Switch(
-              value: widget.aluno.vaiHoje,
-              activeThumbColor: Colors.green,
-              onChanged: widget.onToggleVaiHoje,
-            ),
+            trailing: Switch(value: widget.aluno.vaiHoje, activeThumbColor: Colors.green, onChanged: widget.onToggleVaiHoje),
             children: [
               _buildComunicacaoSection(),
               const Divider(),
@@ -257,4 +252,6 @@ class _AlunoCardPaiState extends State<AlunoCardPai> {
       ),
     );
   }
+  
+  // ... (m√É¬©todos _buildComunicacaoSection e _buildHorariosSection mantidos)
 }

@@ -1,15 +1,9 @@
-import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:http/http.dart' as http;
 // flutter_image_compress removido — não suporta web.
-
-// ── Constantes da API ─────────────────────────────────────────
-const String _kApiBase = 'https://novo.balcao2ponto0.com.br';
-const String _kApiKey  = 'VanPro@2026#Secure'; // mesma do api_alunos.py
 
 class ManutencaoAlunoDialog extends StatefulWidget {
   final Map? alunoExistente;
@@ -38,19 +32,18 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
 
   // ── Controllers ──────────────────────────────────────────────
   late TextEditingController _nomeController;
-  late TextEditingController _escolaController;
-  late TextEditingController _enderecoController;
-  late TextEditingController _bairroController;
-  late TextEditingController _municipioController;
-  late TextEditingController _estadoController;
-  late TextEditingController _telefoneController;
-  late TextEditingController _horarioEntradaCtrl;
-  late TextEditingController _horarioSaidaCtrl;
+  late TextEditingController _escolaController;       // → nomeEscola
+  late TextEditingController _enderecoController;     // → endereco
+  late TextEditingController _bairroController;       // → bairro
+  late TextEditingController _municipioController;    // → municipio
+  late TextEditingController _estadoController;       // → estado
+  late TextEditingController _telefoneController;     // → telefone
+  late TextEditingController _horarioEntradaCtrl;     // → horarioEntrada
+  late TextEditingController _horarioSaidaCtrl;       // → horarioSaida
 
   Uint8List? _imagemSelecionada;
   String? _fotoUrl;
   bool _isLoading = false;
-  int? _servidorId; // ID retornado pelo MySQL
 
   // ── Init ─────────────────────────────────────────────────────
   @override
@@ -59,17 +52,19 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
     final a = widget.alunoExistente;
 
     _nomeController      = TextEditingController(text: a?['nome'] ?? '');
+    // CORRETO: campo é 'nomeEscola', não 'escola'
     _escolaController    = TextEditingController(text: a?['nomeEscola'] ?? '');
     _enderecoController  = TextEditingController(text: a?['endereco'] ?? '');
     _bairroController    = TextEditingController(text: a?['bairro'] ?? '');
+    // Pre-preenche com cidade do responsável no cadastro novo
     _municipioController = TextEditingController(
         text: a?['municipio'] ?? widget.cidadeResponsavel);
     _estadoController    = TextEditingController(text: a?['estado'] ?? '');
     _telefoneController  = TextEditingController(text: a?['telefone'] ?? '');
+    // CORRETO: campos são 'horarioEntrada' e 'horarioSaida'
     _horarioEntradaCtrl  = TextEditingController(text: a?['horarioEntrada'] ?? '');
     _horarioSaidaCtrl    = TextEditingController(text: a?['horarioSaida'] ?? '');
-    _fotoUrl    = a?['fotoUrl'];
-    _servidorId = a?['servidorId'] as int?;
+    _fotoUrl = a?['fotoUrl'];
   }
 
   // ── Helpers de horário ────────────────────────────────────────
@@ -121,14 +116,10 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
   }
 
   Future<String?> _uploadFoto() async {
-    if (_imagemSelecionada == null) return _fotoUrl ?? '';
-
+    if (_imagemSelecionada == null) return _fotoUrl;
     if (_fotoUrl != null && _fotoUrl!.isNotEmpty) {
-      try {
-        await _deletarFotoAntiga(_fotoUrl!);
-      } catch (_) {}
+      await _deletarFotoAntiga(_fotoUrl!);
     }
-
     try {
       final fileName =
           '${widget.responsavelUid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -141,140 +132,61 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
     }
   }
 
-  // ── Servidor Python ───────────────────────────────────────────
-  Future<int?> _salvarNoServidor({
-    required String firebaseStatusId,
-    required String fotoUrl,
-  }) async {
-    final body = {
-      'firebase_status_id':      firebaseStatusId,
-      'responsavel_uid':         widget.responsavelUid,
-      'van_code':                widget.vanCode,
-      'nome':                    _nomeController.text.trim(),
-      'nome_escola':             _escolaController.text.trim(),
-      'endereco':                _enderecoController.text.trim(),
-      'bairro':                  _bairroController.text.trim(),
-      'municipio':               _municipioController.text.trim(),
-      'estado':                  _estadoController.text.trim(),
-      'telefone':                _telefoneController.text.trim(),
-      'horario_entrada':         _horarioEntradaCtrl.text.trim(),
-      'horario_entrada_minutos': _horarioParaMinutos(_horarioEntradaCtrl.text.trim()),
-      'horario_saida':           _horarioSaidaCtrl.text.trim(),
-      'horario_saida_minutos':   _horarioParaMinutos(_horarioSaidaCtrl.text.trim()),
-      'foto_url':                fotoUrl,
-      'status_contratacao':      'ativo',
-    };
-
-    final headers = {
-      'Content-Type': 'application/json',
-      'X-Api-Key':    _kApiKey,
-    };
-
-    try {
-      if (_servidorId != null) {
-        // EDITAR
-        await http.put(
-          Uri.parse('$_kApiBase/alunos/$_servidorId'),
-          headers: headers,
-          body: jsonEncode(body),
-        );
-        return _servidorId;
-      } else {
-        // CRIAR
-        final res = await http.post(
-          Uri.parse('$_kApiBase/alunos'),
-          headers: headers,
-          body: jsonEncode(body),
-        );
-        if (res.statusCode == 201) {
-          final json = jsonDecode(res.body);
-          return json['servidor_id'] as int?;
-        }
-        debugPrint('Servidor retornou ${res.statusCode}: ${res.body}');
-      }
-    } catch (e) {
-      debugPrint('Servidor indisponivel (nao bloqueia): $e');
-    }
-    return null;
-  }
-
   // ── Salvar ────────────────────────────────────────────────────
   Future<void> _salvarAluno() async {
-    debugPrint('>>> _salvarAluno chamado');
-    final isValid = _formKey.currentState!.validate();
-    debugPrint('>>> formulario valido: $isValid');
-    if (!isValid) return;
+    if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
-    debugPrint('>>> isLoading = true, iniciando upload...');
 
     try {
       final fotoUrl = await _uploadFoto();
       final entradaStr = _horarioEntradaCtrl.text.trim();
       final saidaStr   = _horarioSaidaCtrl.text.trim();
 
+      // Mapeamento CORRETO para Aluno.fromFirestore
       final Map<String, dynamic> dados = {
-        'nome':                  _nomeController.text.trim(),
-        'nomeEscola':            _escolaController.text.trim(),
-        'endereco':              _enderecoController.text.trim(),
-        'bairro':                _bairroController.text.trim(),
-        'municipio':             _municipioController.text.trim(),
-        'estado':                _estadoController.text.trim(),
-        'telefone':              _telefoneController.text.trim(),
-        'horarioEntrada':        entradaStr,
+        'nome':                 _nomeController.text.trim(),
+        'nomeEscola':           _escolaController.text.trim(),   // ← CORRETO
+        'endereco':             _enderecoController.text.trim(),
+        'bairro':               _bairroController.text.trim(),
+        'municipio':            _municipioController.text.trim(),
+        'estado':               _estadoController.text.trim(),
+        'telefone':             _telefoneController.text.trim(),
+        'horarioEntrada':       entradaStr,                      // ← CORRETO
         'horarioEntradaMinutos': _horarioParaMinutos(entradaStr),
-        'horarioSaida':          saidaStr,
-        'horarioSaidaMinutos':   _horarioParaMinutos(saidaStr),
-        'nomeResponsavel':       widget.nomeResponsavel,
-        'responsavelUid':        widget.responsavelUid,
-        'vanCode':               widget.vanCode,
-        'fotoUrl':               fotoUrl ?? '',
-        'statusContratacao':     'ativo',
-        'status':                'Aguardando',
-        'vaiHoje':               true,
-        'cienteMotorista':       false,
-        'pago':                  false,
-        'ordem':                 widget.alunoExistente?['ordem'] ?? 0,
-        'updatedAt':             FieldValue.serverTimestamp(),
-        'ultimaAtualizacao':     FieldValue.serverTimestamp(),
-        'statusEmbarque':        'aguardando',
-        'mesAvaliado':           '',
-        'avaliadoNoCiclo':       false,
+        'horarioSaida':         saidaStr,                        // ← CORRETO
+        'horarioSaidaMinutos':  _horarioParaMinutos(saidaStr),
+        'nomeResponsavel':      widget.nomeResponsavel,          // ← CORRETO
+        'responsavelUid':       widget.responsavelUid,
+        'vanCode':              widget.vanCode,
+        'fotoUrl':              fotoUrl ?? '',
+        'statusContratacao':    'ativo',
+        'status':               'Aguardando',
+        'vaiHoje':              true,
+        'cienteMotorista':      false,
+        'pago':                 false,
+        'ordem':                widget.alunoExistente?['ordem'] ?? 0,
+        'updatedAt':            FieldValue.serverTimestamp(),
+        'ultimaAtualizacao':    FieldValue.serverTimestamp(),
+        'statusEmbarque':       'aguardando',
+        'mesAvaliado':          '',
+        'avaliadoNoCiclo':      false,
       };
 
       final col = FirebaseFirestore.instance.collection('alunos');
-      String firebaseDocId = widget.docId ?? '';
-
       if (widget.docId != null) {
-        // ── EDITAR ──
         await col.doc(widget.docId).update(dados);
-        firebaseDocId = widget.docId!;
       } else {
-        // ── CRIAR ──
-        dados['createdAt']          = FieldValue.serverTimestamp();
+        dados['createdAt']         = FieldValue.serverTimestamp();
         dados['solicitacaoContato'] = false;
-        dados['respostaContato']    = '';
-        dados['logs']               = [];
-        dados['valorMensalidade']   = 0.0;
-        dados['diaPagamento']       = 5;
-        dados['motivoRecusa']       = '';
-        dados['escolaId']           = '';
-        dados['enderecoEscola']     = '';
-        dados['avaliadoNoCiclo']    = false;
-        final docRef = await col.add(dados);
-        firebaseDocId = docRef.id;
-        await docRef.update({'firebaseStatusId': firebaseDocId});
-      }
-
-      // ── Salva no servidor (nao bloqueia o fluxo se falhar) ──
-      final servidorId = await _salvarNoServidor(
-        firebaseStatusId: firebaseDocId,
-        fotoUrl: fotoUrl ?? '',
-      );
-
-      // Grava servidorId de volta no Firebase para uso futuro
-      if (servidorId != null) {
-        await col.doc(firebaseDocId).update({'servidorId': servidorId});
-        debugPrint('>>> servidorId salvo: $servidorId');
+        dados['respostaContato']   = '';
+        dados['logs']              = [];
+        dados['valorMensalidade']  = 0.0;
+        dados['diaPagamento']      = 5;
+        dados['motivoRecusa']      = '';
+        dados['escolaId']          = '';
+        dados['enderecoEscola']    = '';
+        dados['avaliadoNoCiclo']   = false;
+        await col.add(dados);
       }
 
       if (mounted) {
@@ -367,6 +279,7 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // ── Cabeçalho ──
               Row(
                 children: [
                   Icon(
@@ -382,6 +295,7 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
                 ],
               ),
 
+              // ── Van vinculada ──
               if (widget.vanCode.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Container(
@@ -436,6 +350,7 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
                 ),
               ],
 
+              // ── DADOS DO ALUNO ──
               _buildSectionTitle('DADOS DO ALUNO'),
 
               _buildTextField(
@@ -452,6 +367,7 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
                 keyboardType: TextInputType.phone,
               ),
 
+              // ── Foto ──
               Row(
                 children: [
                   GestureDetector(
@@ -482,8 +398,10 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
                 ],
               ),
 
+              // ── ESCOLA ──
               _buildSectionTitle('ESCOLA'),
 
+              // Campo EDITÁVEL — sem readOnly, sem dependência de widget externo
               _buildTextField(
                 controller: _escolaController,
                 label: 'Nome da escola',
@@ -491,6 +409,7 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
                 obrigatorio: true,
               ),
 
+              // ── Horário entrada ──
               _buildTextField(
                 controller: _horarioEntradaCtrl,
                 label: 'Horário de entrada',
@@ -500,6 +419,7 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
                 onTap: () => _selecionarHorario(_horarioEntradaCtrl),
               ),
 
+              // ── Horário saída ──
               _buildTextField(
                 controller: _horarioSaidaCtrl,
                 label: 'Horário de saída',
@@ -509,6 +429,7 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
                 onTap: () => _selecionarHorario(_horarioSaidaCtrl),
               ),
 
+              // ── ENDEREÇO DO ALUNO ──
               _buildSectionTitle('ENDEREÇO DO ALUNO'),
 
               _buildTextField(
@@ -563,6 +484,7 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
 
               const SizedBox(height: 8),
 
+              // ── Botões ──
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [

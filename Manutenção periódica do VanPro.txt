@@ -1,0 +1,145 @@
+
+
+***
+
+## Rotina Semanal — Todo Domingo às 2h da manhã
+
+Domingo de madrugada é ideal: menor uso do app (vans não circulam), e você tem o dia todo para verificar se deu algo errado.
+
+### 1. Backup completo (2h00)
+```bash
+# MySQL — dump completo
+mysqldump -u usuario -p balcao2p_vanpro > backup_$(date +%Y%m%d).sql
+
+# Comprime para economizar espaço
+gzip backup_$(date +%Y%m%d).sql
+
+# Envia para Google Drive ou S3
+# (via rclone — ferramenta gratuita)
+rclone copy backup_$(date +%Y%m%d).sql.gz gdrive:vanpro/backups/
+```
+**Manter:** últimos 4 semanais + 1 por mês por 6 meses.
+
+***
+
+### 2. Otimização das tabelas MySQL (2h10)
+```sql
+-- Desfragmenta e reorganiza os índices
+OPTIMIZE TABLE alunos;
+OPTIMIZE TABLE motoristas;
+OPTIMIZE TABLE vanpro_logs;
+OPTIMIZE TABLE mensalidades;
+OPTIMIZE TABLE avaliacoes;
+
+-- Atualiza estatísticas para o query optimizer
+ANALYZE TABLE alunos;
+ANALYZE TABLE motoristas;
+```
+Com o tempo, tabelas com muitos inserts/deletes ficam fragmentadas e ficam lentas. Isso resolve.
+
+***
+
+### 3. Limpeza de logs antigos (2h15)
+```sql
+-- Manter só os últimos 6 meses de log
+-- (logs mais antigos vão para tabela de arquivo)
+INSERT INTO vanpro_logs_arquivo 
+SELECT * FROM vanpro_logs 
+WHERE data_hora < DATE_SUB(NOW(), INTERVAL 6 MONTH);
+
+DELETE FROM vanpro_logs 
+WHERE data_hora < DATE_SUB(NOW(), INTERVAL 6 MONTH);
+```
+
+***
+
+### 4. Reset semanal de flags (2h20)
+```sql
+-- Resetar avaliado_no_ciclo todo início de mês
+-- (rodar só no primeiro domingo do mês)
+UPDATE alunos SET avaliado_no_ciclo = 0 
+WHERE DAY(NOW()) <= 7;
+```
+
+***
+
+### 5. Verificação de integridade (2h25)
+```sql
+-- Alunos sem motorista vinculado (vanCode inválido)
+SELECT id, nome, vanCode FROM alunos 
+WHERE motorista_id IS NULL AND status_contratacao = 'ativo';
+
+-- Motoristas com documentos vencidos
+SELECT nome, vencimento_cnh, vencimento_vistoria 
+FROM motoristas 
+WHERE vencimento_cnh < CURDATE() 
+   OR vencimento_vistoria < CURDATE();
+
+-- Mensalidades em aberto há mais de 60 dias
+SELECT a.nome, m.mes, m.ano, m.valor
+FROM mensalidades m
+JOIN alunos a ON a.id = m.aluno_id
+WHERE m.pago = 0 
+AND m.created_at < DATE_SUB(NOW(), INTERVAL 60 DAY);
+```
+Isso gera um relatório que você recebe por email toda semana.
+
+***
+
+### 6. Firebase — limpeza de tokens FCM velhos (2h30)
+```
+Tokens FCM expiram quando o usuário desinstala o app.
+A cada semana, tokens com mais de 30 dias sem login
+devem ser zerados para não desperdiçar tentativas de push.
+```
+```sql
+UPDATE users_auth_local 
+SET fcmToken = NULL 
+WHERE ultimo_login < DATE_SUB(NOW(), INTERVAL 30 DAY);
+```
+
+***
+
+## Rotina Diária — Todo dia às 3h da manhã
+
+Mais leve, automatizada, sem intervenção sua:
+
+| Tarefa | O que faz |
+|---|---|
+| **Reset de status dos alunos** | Zera `alunos_status` no Firestore (status volta para "Aguardando Van") |
+| **Backup incremental** | Só as tabelas que mudaram no dia |
+| **Verificar espaço em disco** | Alerta por email se passar de 80% |
+| **Verificar uploads órfãos** | Fotos no servidor sem aluno correspondente no banco |
+
+***
+
+## Como automatizar tudo isso
+
+No seu servidor cPanel, você já tem **Cron Jobs**:
+
+```
+# Rotina diária — 3h da manhã todo dia
+0 3 * * * php /home/usuario/vanpro/cron/rotina_diaria.php
+
+# Rotina semanal — domingo às 2h da manhã
+0 2 * * 0 php /home/usuario/vanpro/cron/rotina_semanal.php
+
+# Backup MySQL — todo dia às 1h da manhã
+0 1 * * * mysqldump -u user -p'senha' balcao2p_vanpro | gzip > /backups/backup_$(date +\%Y\%m\%d).sql.gz
+```
+
+***
+
+## Regra de ouro para backup
+
+> **3-2-1:** 3 cópias, em 2 lugares diferentes, sendo 1 fora do servidor.
+
+| Cópia | Onde |
+|---|---|
+| 1ª | Próprio servidor (pasta /backups) |
+| 2ª | Google Drive via rclone (gratuito) |
+| 3ª | Seu computador local (mensal) |
+
+***
+
+Quer que eu monte os arquivos PHP dos scripts de cron já prontos para você colocar no servidor?

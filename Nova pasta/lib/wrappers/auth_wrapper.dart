@@ -26,11 +26,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
   void initState() {
     super.initState();
     _resolveUser();
-  
-    // ✅ Escuta mudanças de auth (login/logout)
-    FirebaseAuth.instance.authStateChanges().listen((user) {
-      if (mounted) _resolveUser();
-    });
   }
  
   Future<void> _resolveUser() async {
@@ -138,38 +133,22 @@ class _AuthWrapperState extends State<AuthWrapper> {
     await NotificationService.onUserSignedIn(uid, context);
   }
  
-@override
-Widget build(BuildContext context) {
-  return StreamBuilder<User?>(
-    stream: FirebaseAuth.instance.authStateChanges(),
-    builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting || _loading) {
-        return const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        );
-      }
-
-      // Usuário deslogou — vai para login imediatamente
-      if (snapshot.data == null) {
-        return const AuthScreen();
-      }
-
-      // Usuário logado — usa a tela resolvida
-      if (_resolvedScreen == null) {
-        _resolveUser();
-        return const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        );
-      }
-
-      return Scaffold(
-        body: _resolvedScreen!,
-        floatingActionButton: FloatingActionButton(
-          onPressed: () => AppLogger.downloadLog(),
-          child: const Icon(Icons.download),
-        ),
+  @override
+  Widget build(BuildContext context) {
+    if (_loading || _resolvedScreen == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
       );
-    },
-  );
-}
+    }
+ 
+    return Scaffold(
+      body: _resolvedScreen!,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          AppLogger.downloadLog();
+        },
+        child: const Icon(Icons.download),
+      ),
+    );
+  }
 }

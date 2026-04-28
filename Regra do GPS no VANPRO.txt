@@ -1,0 +1,103 @@
+Dois arquivos entregues :
+
+***
+
+## O que foi incorporado nesta versão
+
+### A regra do GPS ficou perfeita na arquitetura
+
+A janela de visibilidade foi modelada assim :
+
+| Status do aluno | Pai vê o mapa? |
+|---|---|
+| Aguardando Van | ❌ |
+| **Embarcou (ida)** | ✅ janela abre |
+| Chegou na Escola | ❌ janela fecha |
+| Aguardando Saída | ❌ |
+| **Embarcou (volta)** | ✅ janela abre |
+| Chegou em Casa | ❌ janela fecha |
+| Não vai hoje | ❌ |
+
+A posição em tempo real fica no Firestore `motorista_localizacao/{vanCode}`, e o documento **só existe enquanto há alunos embarcados** — quando o último chega, o documento é deletado automaticamente . As Security Rules bloqueiam o acesso do pai se o `alunoId` dele não constar na lista `alunosEmbarcados`, então não tem como um pai ver a van de outro .
+
+### Schema SQL — 11 tabelas prontas para o phpMyAdmin 
+
+O arquivo `.sql` já inclui as FK references corretas, índices para a busca de motoristas, o `UNIQUE KEY` que evita avaliação duplicada no mesmo mês, e as instruções de `ALTER TABLE` separadas para a `vanpro_logs` que já existe com 158 registros — **não vai perder nenhum dado** .
+
+### Correções urgentes identificadas pela varredura 
+
+Dois bugs ativos precisam ser corrigidos **antes** de qualquer migração:
+1. `ultimoPagamento` ausente no `toMap()` — apaga o campo toda vez que o aluno é salvo
+2. `statusEmbarque` e `timestampEmbarque` usados no código mas inexistentes no model
+
+
+Não só acho necessário — acho que é uma das funcionalidades mais valiosas do VanPro do ponto de vista de diferencial competitivo. É o tipo de coisa que faz um pai escolher o VanPro em vez de um grupo de WhatsApp.
+
+***
+
+## Por que faz todo sentido
+
+O pai viajando é um caso real e comum. Mas vai além dele:
+
+| Perfil | Por que quer o histórico |
+|---|---|
+| Pai viajando | Confere tudo na volta |
+| Mãe que trabalha longe | Vê os embarques do dia no horário de almoço |
+| Pais separados | Cada um acompanha de onde estiver |
+| Responsável legal (avó, tio) | Prova que a criança foi entregue corretamente |
+| **Motorista** | Se houver reclamação, tem prova do horário exato |
+| **Admin VanPro** | Auditoria em caso de disputa |
+
+***
+
+## Como modelar isso corretamente
+
+O documento do Firestore `motorista_localizacao` sendo deletado é correto — ele é só a posição ao vivo. O **histórico de eventos** é outra coisa e vai para dois lugares:
+
+**1. `vanpro_logs` no MySQL — já existe** → registra cada evento com timestamp:
+```
+Alice Moreira | Embarcou ida     | 27/04/2026 07:32
+Alice Moreira | Chegou na Escola | 27/04/2026 07:58
+Alice Moreira | Embarcou volta   | 27/04/2026 12:05
+Alice Moreira | Chegou em Casa   | 27/04/2026 12:31
+```
+Retenção: **últimos 30 dias** por aluno (não pesado — são ~8 registros/dia).
+
+**2. `motoristas_tracking_historico`** → guarda 1 ponto GPS a cada 5 minutos durante o embarque, para o pai ver o trajeto aproximado, não só os eventos. Retenção: **14 dias**.
+
+***
+
+## O que o pai veria no app
+
+Uma tela simples de "Histórico do aluno" com dois modos:
+
+**Modo Eventos** (leve, carrega rápido):
+```
+📅 Hoje, 27/04/2026
+  🟢 07:32 — Embarcou (ida)
+  🏫 07:58 — Chegou na Escola
+  🟢 12:05 — Embarcou (volta)  
+  🏠 12:31 — Chegou em Casa
+
+📅 Ontem, 26/04/2026
+  🔴 — Não foi hoje
+  ...
+```
+
+**Modo Trajeto** (só quando solicitado — carrega o mapa com a rota):
+Reconstrói o trajeto dos pontos salvos no `motoristas_tracking_historico` durante o embarque.
+
+***
+
+## Retenção sugerida
+
+| Dado | Onde | Retenção | Motivo |
+|---|---|---|---|
+| Eventos (embarque/chegada) | MySQL `vanpro_logs` | **30 dias** | Leve, ~240 registros/mês por aluno |
+| Pontos GPS do trajeto | MySQL `tracking_historico` | **14 dias** | Mais pesado, ~24 pontos/dia |
+| Status ao vivo | Firestore `alunos_status` | Reset diário | Só importa hoje |
+| Posição ao vivo | Firestore `motorista_localizacao` | Deletado ao chegar | Só importa durante embarque |
+
+O cron de domingo que planejamos já cuidaria da limpeza automática — deletar registros mais antigos que o prazo definido.
+
+***

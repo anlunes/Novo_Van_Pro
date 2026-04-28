@@ -166,8 +166,8 @@ class _PaisScreenState extends State<PaisScreen> {
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Sair da conta'),
-        content: const Text('Deseja mesmo sair da sua conta?'),
+        title: const Text('Sair'),
+        content: const Text('Deseja realmente sair da sua conta?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -175,17 +175,14 @@ class _PaisScreenState extends State<PaisScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Sim'),
+            child: const Text('Sair'),
           ),
         ],
       ),
     );
-
-  if (confirmar == true) {
+    if (confirmar != true) return;
     await FirebaseAuth.instance.signOut();
-    // Sem Navigator aqui — o AuthWrapper redireciona automaticamente
   }
-}
 
   @override
   Widget build(BuildContext context) {
