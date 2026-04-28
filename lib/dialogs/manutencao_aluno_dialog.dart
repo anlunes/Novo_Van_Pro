@@ -177,7 +177,7 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
           Uri.parse('$_kApiBase/alunos/$_servidorId'),
           headers: headers,
           body: jsonEncode(body),
-        );
+        ).timeout(const Duration(seconds: 15));
         return _servidorId;
       } else {
         // CRIAR
@@ -185,10 +185,13 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
           Uri.parse('$_kApiBase/alunos'),
           headers: headers,
           body: jsonEncode(body),
-        );
+        ).timeout(const Duration(seconds: 15));
+
+        debugPrint('>>> servidor status: ${res.statusCode} body: ${res.body}');
+
         if (res.statusCode == 201) {
           final json = jsonDecode(res.body);
-          return json['servidor_id'] as int?;
+          return json['servidorid'] as int?; // ← corrigido
         }
         debugPrint('Servidor retornou ${res.statusCode}: ${res.body}');
       }
@@ -208,7 +211,14 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
     debugPrint('>>> isLoading = true, iniciando upload...');
 
     try {
-      final fotoUrl = await _uploadFoto();
+      final fotoUrl = await _uploadFoto().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          debugPrint('>>> upload foto timeout — seguindo sem foto');
+          return _fotoUrl ?? '';
+        },
+      );
+
       final entradaStr = _horarioEntradaCtrl.text.trim();
       final saidaStr   = _horarioSaidaCtrl.text.trim();
 
