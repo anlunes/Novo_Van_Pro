@@ -5,7 +5,6 @@ import 'package:http/http.dart' as http;
 import '../models/aluno_model.dart';
 import 'aluno_card.dart';
 
-// ── Constantes da API ─────────────────────────────────────────
 const String _kApiBaseAba = 'https://novo.balcao2ponto0.com.br/api_alunos.php';
 const String _kApiKeyAba  = 'VanPro@2026#Secure';
 
@@ -16,16 +15,12 @@ class StatusAluno {
 }
 
 class AbaChamadaWidget extends StatefulWidget {
-  // ── MIGRAÇÃO 1: vanCode agora obrigatório ────────────────────
-  // Necessário para filtrar alunos da van correta no Firestore e
-  // no servidor. Antes, o query buscava TODOS os alunos da coleção.
   final String vanCode;
-
-  final VoidCallback?            onStatusChanged;
+  final VoidCallback?              onStatusChanged;
   final Function(String?, String)? onWhatsAppPressed;
-  final Function(String)?        onReplyContact;
-  final Function(List<Aluno>)?   onReorder;
-  final Function(String, bool)?  onPaymentStatusChanged;
+  final Function(String)?          onReplyContact;
+  final Function(List<Aluno>)?     onReorder;
+  final Function(String, bool)?    onPaymentStatusChanged;
 
   const AbaChamadaWidget({
     super.key,
@@ -42,9 +37,10 @@ class AbaChamadaWidget extends StatefulWidget {
 }
 
 class _AbaChamadaWidgetState extends State<AbaChamadaWidget> {
-  // ── MIGRAÇÃO 2: cache dos dados completos do servidor ─────────
-  // Chave: servidorId.toString()
+  // Índice 1: chave = servidorId (alunos novos)
   final Map<String, Map<String, dynamic>> _dadosServidor = {};
+  // Índice 2: chave = firebase_status_id (alunos antigos sem servidorId no Firestore)
+  final Map<String, Map<String, dynamic>> _dadosServidorPorFirebaseId = {};
 
   @override
   void initState() {
@@ -55,14 +51,13 @@ class _AbaChamadaWidgetState extends State<AbaChamadaWidget> {
   @override
   void didUpdateWidget(AbaChamadaWidget old) {
     super.didUpdateWidget(old);
-    // Se o vanCode mudou (troca de conta etc.), recarrega do servidor
     if (old.vanCode != widget.vanCode && widget.vanCode.isNotEmpty) {
       _dadosServidor.clear();
+      _dadosServidorPorFirebaseId.clear();
       _carregarAlunosDoServidor();
     }
   }
 
-  // ── MIGRAÇÃO 3: busca lista por van_code no servidor ──────────
   Future<void> _carregarAlunosDoServidor() async {
     try {
       final uri = Uri.parse('$_kApiBaseAba?van_code=${widget.vanCode}');
@@ -71,25 +66,38 @@ class _AbaChamadaWidgetState extends State<AbaChamadaWidget> {
           .timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         final List lista = jsonDecode(res.body);
-        final novo = <String, Map<String, dynamic>>{};
+        final novoPorSid = <String, Map<String, dynamic>>{};
+        final novoPorFid = <String, Map<String, dynamic>>{};
         for (final item in lista) {
+          final map = Map<String, dynamic>.from(item);
           final sid = item['id']?.toString();
-          if (sid != null) novo[sid] = Map<String, dynamic>.from(item);
+          if (sid != null) novoPorSid[sid] = map;
+          final fid = item['firebase_status_id']?.toString();
+          if (fid != null && fid.isNotEmpty) novoPorFid[fid] = map;
         }
-        if (mounted) setState(() { _dadosServidor..clear()..addAll(novo); });
+        if (mounted) {
+          setState(() {
+            _dadosServidor..clear()..addAll(novoPorSid);
+            _dadosServidorPorFirebaseId..clear()..addAll(novoPorFid);
+          });
+        }
       }
     } catch (e) {
       debugPrint('>>> AbaChamada _carregarServidor erro: $e');
     }
   }
 
-  // ── MIGRAÇÃO 4: mescla servidor (snake_case) + Firestore (operacional) ──
+  Map<String, dynamic>? _resolverServidor(Map<String, dynamic> fsData, String docId) {
+    final sid = fsData['servidorId']?.toString();
+    if (sid != null) return _dadosServidor[sid];
+    return _dadosServidorPorFirebaseId[docId];
+  }
+
   Map<String, dynamic> _buildMergedMap(
-    Map<String, dynamic> fs, // Firestore — 5 campos operacionais
-    Map<String, dynamic> s,  // Servidor  — dados completos
+    Map<String, dynamic> fs,
+    Map<String, dynamic> s,
   ) {
     return {
-      // Cadastral do servidor
       'nome':                  s['nome']                    ?? '',
       'nomeEscola':            s['nome_escola']             ?? '',
       'endereco':              s['endereco']                ?? '',
@@ -118,11 +126,11 @@ class _AbaChamadaWidgetState extends State<AbaChamadaWidget> {
       'status':                s['status']                  ?? 'Aguardando',
       'escolaId':              s['escola_id']               ?? '',
       'enderecoEscola':        s['endereco_escola']         ?? '',
-      // Operacional do Firestore (tempo real)
-      'responsavelUid':        fs['responsavelUid']         ?? '',
-      'servidorId':            fs['servidorId'],
-      'statusEmbarque':        fs['statusEmbarque']         ?? 'aguardando',
-      'vaiHoje':               fs['vaiHoje']                ?? true,
+      'responsavelUid': fs['responsavelUid'] ?? '',
+      // servidorId: prefere o do Firestore; usa s['id'] para alunos antigos
+      'servidorId':     fs['servidorId'] ?? s['id'],
+      'statusEmbarque': fs['statusEmbarque'] ?? 'aguardando',
+      'vaiHoje':        fs['vaiHoje'] ?? true,
     };
   }
 
@@ -132,8 +140,6 @@ class _AbaChamadaWidgetState extends State<AbaChamadaWidget> {
       children: [
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            // ── MIGRAÇÃO 5: filtro por vanCode (antes sem filtro!) ──
-            // Ordenação feita em memória para evitar índice composto
             stream: FirebaseFirestore.instance
                 .collection('alunos')
                 .where('vanCode', isEqualTo: widget.vanCode)
@@ -142,24 +148,15 @@ class _AbaChamadaWidgetState extends State<AbaChamadaWidget> {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
-
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                 return const Center(child: Text('Nenhum aluno encontrado'));
               }
 
-              final docs = snapshot.data!.docs;
-
-              // ── MIGRAÇÃO 6: mescla servidor + Firestore ───────────
-              // Alunos NOVOS: Firestore só tem 5 campos → usa servidor
-              // Alunos ANTIGOS: Firestore tem tudo → fromFirestore
-              final alunos = docs.map((doc) {
-                final fsData = doc.data() as Map<String, dynamic>;
-                final sid = fsData['servidorId']?.toString();
-                if (sid != null && _dadosServidor.containsKey(sid)) {
-                  return Aluno.fromMapa(
-                    doc.id,
-                    _buildMergedMap(fsData, _dadosServidor[sid]!),
-                  );
+              final alunos = snapshot.data!.docs.map((doc) {
+                final fsData     = doc.data() as Map<String, dynamic>;
+                final serverData = _resolverServidor(fsData, doc.id);
+                if (serverData != null) {
+                  return Aluno.fromMapa(doc.id, _buildMergedMap(fsData, serverData));
                 }
                 return Aluno.fromFirestore(doc);
               }).toList()
