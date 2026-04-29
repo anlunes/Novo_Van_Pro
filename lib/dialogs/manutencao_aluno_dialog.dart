@@ -70,7 +70,8 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
     _horarioEntradaCtrl  = TextEditingController(text: a?['horarioEntrada'] ?? '');
     _horarioSaidaCtrl    = TextEditingController(text: a?['horarioSaida'] ?? '');
     _fotoUrl    = a?['fotoUrl'];
-    _servidorId = a?['servidorId'] as int?;
+    final sid = a?['servidorId'];
+    _servidorId = sid is int ? sid : int.tryParse('${sid ?? ''}');
   }
 
   // ── Helpers de horário ────────────────────────────────────────
@@ -201,7 +202,7 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
       } else {
         // CRIAR
         final res = await http.post(
-          Uri.parse('$_kApiBase/alunos'),
+          Uri.parse('$_kApiBase'),
           headers: headers,
           body: jsonEncode(body),
         ).timeout(const Duration(seconds: 15));
