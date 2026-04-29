@@ -1,9 +1,15 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import '../models/aluno_model.dart';
 import '../widgets/aluno_card_pai.dart';
 import '../dialogs/manutencao_aluno_dialog.dart';
+
+// ── Constantes da API ─────────────────────────────────────────
+const String _kApiBasePais  = 'https://novo.balcao2ponto0.com.br/api_alunos.php';
+const String _kApiKeyPais   = 'VanPro@2026#Secure';
 
 class PaisScreen extends StatefulWidget {
   const PaisScreen({super.key});
@@ -23,10 +29,15 @@ class _PaisScreenState extends State<PaisScreen> {
   // Cache de motoristas para nao buscar repetidamente o mesmo vanCode
   final Map<String, Map<String, dynamic>?> _motoristasCache = {};
 
+  // ── MIGRAÇÃO 1: Cache dos dados completos do servidor ────────
+  // Chave: servidorId.toString() — sobrepõe Firestore para alunos novos
+  final Map<String, Map<String, dynamic>> _dadosServidor = {};
+
   @override
   void initState() {
     super.initState();
     _carregarPerfil();
+    _carregarAlunosDoServidor(); // ── MIGRAÇÃO 2: carrega junto com o perfil
   }
 
   Future<void> _carregarPerfil() async {
@@ -49,6 +60,73 @@ class _PaisScreenState extends State<PaisScreen> {
     } catch (e) {
       if (mounted) setState(() => _carregandoPerfil = false);
     }
+  }
+
+  // ── MIGRAÇÃO 3: Busca lista completa do servidor ──────────────
+  Future<void> _carregarAlunosDoServidor() async {
+    try {
+      final uri = Uri.parse('$_kApiBasePais?responsavel_uid=$uid');
+      final res = await http
+          .get(uri, headers: {'X-Api-Key': _kApiKeyPais})
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final List lista = jsonDecode(res.body);
+        final novo = <String, Map<String, dynamic>>{};
+        for (final item in lista) {
+          final sid = item['id']?.toString();
+          if (sid != null) novo[sid] = Map<String, dynamic>.from(item);
+        }
+        if (mounted) setState(() { _dadosServidor..clear()..addAll(novo); });
+      }
+    } catch (e) {
+      debugPrint('>>> _carregarAlunosDoServidor erro: $e');
+    }
+  }
+
+  // ── MIGRAÇÃO 4: Converte JSON snake_case do servidor ─────────
+  // + mescla com campos operacionais do Firestore (camelCase)
+  // REQUER Aluno.fromMapa(String id, Map<String, dynamic> m)
+  // → solicite aluno_model.dart para adicionar essa factory
+  Map<String, dynamic> _buildMergedMap(
+    Map<String, dynamic> fs, // Firestore — 5 campos operacionais (camelCase)
+    Map<String, dynamic> s,  // Servidor  — dados completos (snake_case)
+  ) {
+    return {
+      // ── Cadastral do servidor ──────────────────────────────
+      'nome':                  s['nome']                     ?? '',
+      'nomeEscola':            s['nome_escola']              ?? '',
+      'endereco':              s['endereco']                 ?? '',
+      'bairro':                s['bairro']                   ?? '',
+      'municipio':             s['municipio']                ?? '',
+      'estado':                s['estado']                   ?? '',
+      'telefone':              s['telefone']                 ?? '',
+      'fotoUrl':               s['foto_url']                 ?? '',
+      'horarioEntrada':        s['horario_entrada']          ?? '',
+      'horarioEntradaMinutos': s['horario_entrada_minutos']  ?? 0,
+      'horarioSaida':          s['horario_saida']            ?? '',
+      'horarioSaidaMinutos':   s['horario_saida_minutos']    ?? 0,
+      'nomeResponsavel':       s['nome_responsavel']         ?? '',
+      'vanCode':               s['vanCode']                  ?? '',
+      'statusContratacao':     s['status_contratacao']       ?? 'ativo',
+      'motivoRecusa':          s['motivo_recusa']            ?? '',
+      'valorMensalidade':      s['valor_mensalidade']        ?? 0.0,
+      'diaPagamento':          s['dia_pagamento']            ?? 5,
+      'pago':                  s['pago'] == 1,
+      'ordem':                 s['ordem']                    ?? 0,
+      'solicitacaoContato':    s['solicitacao_contato'] == 1,
+      'respostaContato':       s['resposta_contato']         ?? '',
+      'cienteMotorista':       s['ciente_motorista'] == 1,
+      'avaliadoNoCiclo':       s['avaliado_no_ciclo'] == 1,
+      'mesAvaliado':           s['mes_avaliado']             ?? '',
+      'status':                s['status']                   ?? 'Aguardando',
+      'escolaId':              s['escola_id']                ?? '',
+      'enderecoEscola':        s['endereco_escola']          ?? '',
+      // ── Operacional do Firestore (tempo real) ─────────────
+      'responsavelUid':        fs['responsavelUid']          ?? '',
+      'servidorId':            fs['servidorId'],
+      'statusEmbarque':        fs['statusEmbarque']          ?? 'aguardando',
+      'vaiHoje':               fs['vaiHoje']                 ?? true,
+    };
   }
 
   Future<Map<String, dynamic>?> _buscarMotorista(String vanCode) async {
@@ -74,6 +152,7 @@ class _PaisScreenState extends State<PaisScreen> {
   }
 
   Future<void> _toggleVaiHoje(Aluno aluno, bool value) async {
+    // vaiHoje é um dos 5 campos operacionais — permanece no Firestore
     try {
       await FirebaseFirestore.instance
           .collection('alunos')
@@ -114,10 +193,22 @@ class _PaisScreenState extends State<PaisScreen> {
     );
     if (confirmar != true) return;
     try {
+      // ── Firestore ─────────────────────────────────────────
       await FirebaseFirestore.instance
           .collection('alunos')
           .doc(aluno.id)
           .delete();
+
+      // ── MIGRAÇÃO 5: também apaga no servidor (não bloqueia)
+      final sid = aluno.servidorId;
+      if (sid != null) {
+        http.delete(
+          Uri.parse('$_kApiBasePais?id=$sid'),
+          headers: {'X-Api-Key': _kApiKeyPais},
+        ).catchError((e) => debugPrint('>>> deletarAluno server err: $e'));
+        _dadosServidor.remove(sid.toString());
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -136,7 +227,7 @@ class _PaisScreenState extends State<PaisScreen> {
   }
 
   void _abrirCadastro() {
-    showDialog(  
+    showDialog(
       context: context,
       builder: (_) => ManutencaoAlunoDialog(
         responsavelUid: uid,
@@ -149,12 +240,25 @@ class _PaisScreenState extends State<PaisScreen> {
   }
 
   void _abrirEdicao(Aluno aluno) {
+    // ── MIGRAÇÃO 6: usa dados merged (servidor + Firestore) na edição ──
+    final sid = aluno.servidorId?.toString();
+    final serverData = sid != null ? _dadosServidor[sid] : null;
+    final fsData = {
+      'responsavelUid': aluno.responsavelUid,
+      'servidorId':     aluno.servidorId,
+      'statusEmbarque': aluno.statusEmbarque,
+      'vaiHoje':        aluno.vaiHoje,
+    };
+    final mapaEdicao = serverData != null
+        ? _buildMergedMap(fsData, serverData)
+        : aluno.toMap();
+
     showDialog(
       context: context,
       builder: (_) => ManutencaoAlunoDialog(
         responsavelUid: uid,
         docId: aluno.id,
-       alunoExistente: aluno.toMap(),
+        alunoExistente: mapaEdicao,
         vanCode: _vanCode,
         nomeResponsavel: _nomeResponsavel,
         cidadeResponsavel: _cidade,
@@ -242,10 +346,13 @@ class _PaisScreenState extends State<PaisScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          setState(() {
-            _motoristasCache.clear();
-          });
-          await _carregarPerfil();
+          // ── MIGRAÇÃO 7: refresh recarrega servidor + limpa caches ──
+          _motoristasCache.clear();
+          _dadosServidor.clear();
+          await Future.wait([
+            _carregarPerfil(),
+            _carregarAlunosDoServidor(),
+          ]);
         },
         child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
@@ -317,11 +424,20 @@ class _PaisScreenState extends State<PaisScreen> {
               );
             }
 
-            // Ordenar por campo 'ordem' em memoria para evitar
-            // indice composto no Firestore (where + orderBy)
-            final alunos = docs
-                .map((doc) => Aluno.fromFirestore(doc))
-                .toList()
+            // ── MIGRAÇÃO 8: monta lista mesclando servidor + Firestore ──
+            // Para alunos NOVOS (Firestore só tem 5 campos): usa dados do servidor
+            // Para alunos ANTIGOS (Firestore tem tudo): usa Aluno.fromFirestore
+            // REQUER Aluno.fromMapa(String id, Map<String, dynamic> m) no model
+            final alunos = docs.map((doc) {
+              final fsData = doc.data() as Map<String, dynamic>;
+              final sid = fsData['servidorId']?.toString();
+              if (sid != null && _dadosServidor.containsKey(sid)) {
+                final merged = _buildMergedMap(fsData, _dadosServidor[sid]!);
+                return Aluno.fromMapa(doc.id, merged);
+              }
+              // Fallback: aluno antigo com todos os campos no Firestore
+              return Aluno.fromFirestore(doc);
+            }).toList()
               ..sort((a, b) => a.ordem.compareTo(b.ordem));
 
             return ListView.builder(

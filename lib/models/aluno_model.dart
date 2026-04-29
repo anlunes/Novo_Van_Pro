@@ -81,6 +81,9 @@ class Aluno {
     this.servidorId,
   });
 
+  // ──────────────────────────────────────────────────────────
+  // factory: lê de DocumentSnapshot do Firestore (camelCase)
+  // ──────────────────────────────────────────────────────────
   factory Aluno.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
 
@@ -132,6 +135,88 @@ class Aluno {
       statusEmbarque: data['statusEmbarque'] ?? 'aguardando',
       timestampEmbarque: data['timestampEmbarque'] as Timestamp?,
       servidorId: data['servidorId'] as int?,
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // factory: lê do Map mesclado (camelCase) produzido por
+  // _buildMergedMap() em pais_screen.dart.
+  // Aceita valores bool OU int (0/1) nos campos booleanos para
+  // ser robusto tanto com dados do Firestore quanto do servidor.
+  // ──────────────────────────────────────────────────────────
+  factory Aluno.fromMapa(String id, Map<String, dynamic> m) {
+    // Helper: converte bool ou int(0/1) → bool
+    bool asBool(dynamic v, {bool fallback = false}) {
+      if (v == null) return fallback;
+      if (v is bool) return v;
+      if (v is int) return v != 0;
+      return fallback;
+    }
+
+    // Helper: converte num ou String → double
+    double asDouble(dynamic v) {
+      if (v == null) return 0.0;
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v) ?? 0.0;
+      return 0.0;
+    }
+
+    // Helper: converte num ou String → int
+    int asInt(dynamic v, {int fallback = 0}) {
+      if (v == null) return fallback;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      if (v is String) return int.tryParse(v) ?? fallback;
+      return fallback;
+    }
+
+    return Aluno(
+      id: id,
+      nome:                    m['nome']                 ?? '',
+      endereco:                m['endereco']             ?? '',
+      bairro:                  m['bairro']               ?? '',
+      municipio:               m['municipio']            ?? '',
+      estado:                  m['estado']               ?? '',
+      nomeEscola:              m['nomeEscola']           ?? '',
+      escolaId:                m['escolaId']             ?? '',
+      enderecoEscola:          m['enderecoEscola']       ?? '',
+      telefone:                m['telefone']             ?? '',
+      fotoUrl:                 m['fotoUrl']              ?? '',
+      responsavelUid:          m['responsavelUid']       ?? '',
+      nomeResponsavel:         m['nomeResponsavel']      ?? 'Responsável',
+      vanCode:                 m['vanCode']              ?? '',
+      status:                  m['status']               ?? 'Aguardando',
+      vaiHoje:                 asBool(m['vaiHoje'],          fallback: true),
+      cienteMotorista:         asBool(m['cienteMotorista']),
+      pago:                    asBool(m['pago']),
+      valorMensalidade:        asDouble(m['valorMensalidade']),
+      ordem:                   asInt(m['ordem']),
+      solicitacaoContato:      asBool(m['solicitacaoContato']),
+      respostaContato:         m['respostaContato']      ?? '',
+      logs: (m['logs'] as List?)
+              ?.map((e) => Map<String, dynamic>.from(e))
+              .toList() ??
+          [],
+      statusContratacao:       m['statusContratacao']    ?? 'ativo',
+      diaPagamento:            asInt(m['diaPagamento'],     fallback: 5),
+      motivoRecusa:            m['motivoRecusa']         ?? '',
+      horarioEntrada:          m['horarioEntrada']       ?? '',
+      horarioEntradaMinutos:   asInt(m['horarioEntradaMinutos']),
+      horarioSaida:            m['horarioSaida']         ?? '',
+      horarioSaidaMinutos:     asInt(m['horarioSaidaMinutos']),
+      avaliadoNoCiclo:         asBool(m['avaliadoNoCiclo']),
+      mesAvaliado:             m['mesAvaliado']          ?? '',
+      // Timestamps só existem quando vêm do Firestore
+      ultimaAtualizacao:  m['ultimaAtualizacao']  as Timestamp?,
+      ultimoPagamento:    m['ultimoPagamento']    as Timestamp?,
+      statusEmbarque:     m['statusEmbarque']     ?? 'aguardando',
+      timestampEmbarque:  m['timestampEmbarque']  as Timestamp?,
+      // servidorId pode chegar como int (Firestore) ou precisar de parse
+      servidorId: m['servidorId'] is int
+          ? m['servidorId'] as int
+          : (m['servidorId'] != null
+              ? int.tryParse(m['servidorId'].toString())
+              : null),
     );
   }
 

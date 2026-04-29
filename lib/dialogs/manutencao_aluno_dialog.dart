@@ -138,17 +138,20 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
     return _fotoUrl ?? '';
   }
 
-  // ── Servidor Python ───────────────────────────────────────────
+  // ── Servidor PHP ──────────────────────────────────────────────
   Future<int?> _salvarNoServidor({
     required String firebaseStatusId,
     required String fotoUrl,
   }) async {
+    // ── ALTERAÇÃO 1: body expandido com TODOS os campos do MySQL ──
     final body = {
       'firebase_status_id':      firebaseStatusId,
       'responsavel_uid':         widget.responsavelUid,
+      'nome_responsavel':        widget.nomeResponsavel,
       'van_code':                widget.vanCode,
       'nome':                    _nomeController.text.trim(),
       'nome_escola':             _escolaController.text.trim(),
+      'endereco_escola':         '',           // não há campo no form ainda; mantém vazio
       'endereco':                _enderecoController.text.trim(),
       'bairro':                  _bairroController.text.trim(),
       'municipio':               _municipioController.text.trim(),
@@ -160,7 +163,26 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
       'horario_saida_minutos':   _horarioParaMinutos(_horarioSaidaCtrl.text.trim()),
       'foto_url':                fotoUrl,
       'status_contratacao':      'ativo',
+      // ── Financeiro ──────────────────────────────────────────
+      'valor_mensalidade':       widget.alunoExistente?['valorMensalidade'] ?? 0.0,
+      'dia_pagamento':           widget.alunoExistente?['diaPagamento'] ?? 5,
+      'pago':                    (widget.alunoExistente?['pago'] == true) ? 1 : 0,
+      'ultimo_pagamento':        null,         // sem campo no form ainda; servidor ignora null
+      // ── Operacional ─────────────────────────────────────────
+      'ordem':                   widget.alunoExistente?['ordem'] ?? 0,
+      'status':                  widget.alunoExistente?['status'] ?? 'Aguardando',
+      'vai_hoje':                (widget.alunoExistente?['vaiHoje'] != false) ? 1 : 0,
+      'ciente_motorista':        (widget.alunoExistente?['cienteMotorista'] == true) ? 1 : 0,
+      'solicitacao_contato':     (widget.alunoExistente?['solicitacaoContato'] == true) ? 1 : 0,
+      'resposta_contato':        widget.alunoExistente?['respostaContato'] ?? '',
+      'motivo_recusa':           widget.alunoExistente?['motivoRecusa'] ?? '',
+      // ── Avaliação ────────────────────────────────────────────
+      'avaliado_no_ciclo':       (widget.alunoExistente?['avaliadoNoCiclo'] == true) ? 1 : 0,
+      'mes_avaliado':            widget.alunoExistente?['mesAvaliado'] ?? '',
     };
+
+    // Remove entradas com valor null para não sobrescrever dados no servidor
+    body.removeWhere((k, v) => v == null);
 
     final headers = {
       'Content-Type': 'application/json',
@@ -210,69 +232,41 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
     try {
       final fotoUrl = await _uploadFoto();
 
-      final entradaStr = _horarioEntradaCtrl.text.trim();
-      final saidaStr   = _horarioSaidaCtrl.text.trim();
-
-      final Map<String, dynamic> dados = {
-        'nome':                  _nomeController.text.trim(),
-        'nomeEscola':            _escolaController.text.trim(),
-        'endereco':              _enderecoController.text.trim(),
-        'bairro':                _bairroController.text.trim(),
-        'municipio':             _municipioController.text.trim(),
-        'estado':                _estadoController.text.trim(),
-        'telefone':              _telefoneController.text.trim(),
-        'horarioEntrada':        entradaStr,
-        'horarioEntradaMinutos': _horarioParaMinutos(entradaStr),
-        'horarioSaida':          saidaStr,
-        'horarioSaidaMinutos':   _horarioParaMinutos(saidaStr),
-        'nomeResponsavel':       widget.nomeResponsavel,
-        'responsavelUid':        widget.responsavelUid,
-        'vanCode':               widget.vanCode,
-        'fotoUrl':               fotoUrl ?? '',
-        'statusContratacao':     'ativo',
-        'status':                'Aguardando',
-        'vaiHoje':               true,
-        'cienteMotorista':       false,
-        'pago':                  false,
-        'ordem':                 widget.alunoExistente?['ordem'] ?? 0,
-        'updatedAt':             FieldValue.serverTimestamp(),
-        'ultimaAtualizacao':     FieldValue.serverTimestamp(),
-        'statusEmbarque':        'aguardando',
-        'mesAvaliado':           '',
-        'avaliadoNoCiclo':       false,
+      // ── ALTERAÇÃO 2: Firestore recebe APENAS os 5 campos operacionais ──
+      // Todos os dados cadastrais, financeiros e operacionais vão para o
+      // servidor MySQL via _salvarNoServidor(). O Firestore fica só com
+      // o que precisa de tempo real + chaves de ligação.
+      final Map<String, dynamic> dadosFirestore = {
+        'responsavelUid':    widget.responsavelUid,
+        'servidorId':        _servidorId,          // null na criação; atualizado logo abaixo
+        'statusEmbarque':    widget.alunoExistente?['statusEmbarque'] ?? 'aguardando',
+        'timestampEmbarque': FieldValue.serverTimestamp(),
+        'vaiHoje':           widget.alunoExistente?['vaiHoje'] ?? true,
       };
 
       final col = FirebaseFirestore.instance.collection('alunos');
       String firebaseDocId = widget.docId ?? '';
 
       if (widget.docId != null) {
-        // ── EDITAR ──
-        await col.doc(widget.docId).update(dados);
+        // ── EDITAR: atualiza só os 5 campos no doc existente ──
+        await col.doc(widget.docId).update(dadosFirestore);
         firebaseDocId = widget.docId!;
       } else {
-        // ── CRIAR ──
-        dados['createdAt']          = FieldValue.serverTimestamp();
-        dados['solicitacaoContato'] = false;
-        dados['respostaContato']    = '';
-        dados['logs']               = [];
-        dados['valorMensalidade']   = 0.0;
-        dados['diaPagamento']       = 5;
-        dados['motivoRecusa']       = '';
-        dados['escolaId']           = '';
-        dados['enderecoEscola']     = '';
-        dados['avaliadoNoCiclo']    = false;
-        final docRef = await col.add(dados);
+        // ── CRIAR: cria doc com os 5 campos + firebaseStatusId próprio ──
+        dadosFirestore['createdAt'] = FieldValue.serverTimestamp();
+        final docRef = await col.add(dadosFirestore);
         firebaseDocId = docRef.id;
+        // Registra o próprio docId como firebaseStatusId para rastreio
         await docRef.update({'firebaseStatusId': firebaseDocId});
       }
 
-      // ── Salva no servidor (nao bloqueia o fluxo se falhar) ──
+      // ── Salva TUDO no servidor (não bloqueia o fluxo se falhar) ──
       final servidorId = await _salvarNoServidor(
         firebaseStatusId: firebaseDocId,
-        fotoUrl: fotoUrl ?? '',
+        fotoUrl: fotoUrl,
       );
 
-      // Grava servidorId de volta no Firebase para uso futuro
+      // Grava servidorId de volta no Firestore para uso futuro
       if (servidorId != null) {
         await col.doc(firebaseDocId).update({'servidorId': servidorId});
         debugPrint('>>> servidorId salvo: $servidorId');
