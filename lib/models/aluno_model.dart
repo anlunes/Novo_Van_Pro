@@ -39,6 +39,7 @@ class Aluno {
   //                 'embarcado_volta', 'em_casa', 'nao_vai_hoje'
   final String statusEmbarque;
   final Timestamp? timestampEmbarque;
+  final int? servidorId;
 
   Aluno({
     required this.id,
@@ -77,6 +78,7 @@ class Aluno {
     this.ultimoPagamento,
     this.statusEmbarque = 'aguardando',
     this.timestampEmbarque,
+    this.servidorId,
   });
 
   factory Aluno.fromFirestore(DocumentSnapshot doc) {
@@ -129,6 +131,7 @@ class Aluno {
       ultimoPagamento: data['ultimoPagamento'] as Timestamp?,
       statusEmbarque: data['statusEmbarque'] ?? 'aguardando',
       timestampEmbarque: data['timestampEmbarque'] as Timestamp?,
+      servidorId: data['servidorId'] as int?,
     );
   }
 
@@ -169,6 +172,7 @@ class Aluno {
       if (ultimoPagamento != null) 'ultimoPagamento': ultimoPagamento,
       'statusEmbarque': statusEmbarque,
       if (timestampEmbarque != null) 'timestampEmbarque': timestampEmbarque,
+      if (servidorId != null) 'servidorId': servidorId,
     };
   }
 
