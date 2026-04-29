@@ -2,14 +2,15 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+//import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 // flutter_image_compress removido — não suporta web.
 
 // ── Constantes da API ─────────────────────────────────────────
-const String _kApiBase = 'https://novo.balcao2ponto0.com.br/api_alunos.php';
-const String _kApiKey  = 'VanPro@2026#Secure'; // mesma do api_alunos.py
+const String _kApiBase   = 'https://novo.balcao2ponto0.com.br/api_alunos.php';
+const String _kApiUpload = 'https://novo.balcao2ponto0.com.br/upload_foto.php';
+const String _kApiKey    = 'VanPro@2026#Secure';
 
 class ManutencaoAlunoDialog extends StatefulWidget {
   final Map? alunoExistente;
@@ -111,34 +112,30 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
     }
   }
 
-  Future<void> _deletarFotoAntiga(String url) async {
-    try {
-      final ref = FirebaseStorage.instance.refFromURL(url);
-      await ref.delete();
-    } catch (e) {
-      debugPrint("Erro ao deletar foto antiga: $e");
-    }
-  }
-
-  Future<String?> _uploadFoto() async {
+  Future<String> _uploadFoto() async {
     if (_imagemSelecionada == null) return _fotoUrl ?? '';
-
-    if (_fotoUrl != null && _fotoUrl!.isNotEmpty) {
-      try {
-        await _deletarFotoAntiga(_fotoUrl!);
-      } catch (_) {}
-    }
-
     try {
-      final fileName =
-          '${widget.responsavelUid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final ref =
-          FirebaseStorage.instance.ref().child('alunos/$fileName');
-      await ref.putData(_imagemSelecionada!);
-      return await ref.getDownloadURL();
+      final request = http.MultipartRequest('POST', Uri.parse(_kApiUpload));
+      request.headers['X-Api-Key'] = _kApiKey;
+      request.fields['tipo']       = 'alunos';
+      request.fields['uid']        = widget.responsavelUid;
+      request.files.add(http.MultipartFile.fromBytes(
+        'foto',
+        _imagemSelecionada!,
+        filename: '${widget.responsavelUid}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      final streamed = await request.send().timeout(const Duration(seconds: 30));
+      final res      = await http.Response.fromStream(streamed);
+      debugPrint('>>> upload_foto status: ${res.statusCode} body: ${res.body}');
+      if (res.statusCode == 200) {
+        final json = jsonDecode(res.body);
+        return json['url'] as String? ?? '';
+      }
+      debugPrint('>>> upload_foto falhou: ${res.body}');
     } catch (e) {
-      throw Exception("Falha ao enviar imagem: $e");
+      debugPrint('>>> upload_foto erro: $e');
     }
+    return _fotoUrl ?? '';
   }
 
   // ── Servidor Python ───────────────────────────────────────────
@@ -211,13 +208,7 @@ class _ManutencaoAlunoDialogState extends State<ManutencaoAlunoDialog> {
     debugPrint('>>> isLoading = true, iniciando upload...');
 
     try {
-      final fotoUrl = await _uploadFoto().timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          debugPrint('>>> upload foto timeout — seguindo sem foto');
-          return _fotoUrl ?? '';
-        },
-      );
+      final fotoUrl = await _uploadFoto();
 
       final entradaStr = _horarioEntradaCtrl.text.trim();
       final saidaStr   = _horarioSaidaCtrl.text.trim();
